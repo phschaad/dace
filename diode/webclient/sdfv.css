@@ -7,6 +7,29 @@
     overflow: auto;
 }
 
+.clearfix {
+    clear: both;
+}
+
+pre.code {
+    margin-top: 0;
+    margin-bottom: 0;
+    display: block;
+    /*float: left;*/
+    white-space: pre-wrap;
+}
+
+pre.code code {
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: auto;
+    padding: .3rem;
+    display: block;
+    color: #966;
+    border-radius: 3px;
+    background-color: #eee;
+}
+
 /* Adapted from W3.CSS 4.13 June 2019 by Jan Egil and Borge Refsnes */
 html{-ms-text-size-adjust:100%;-webkit-text-size-adjust:100%}body{margin:0}
 h1,h2,h3,h4,h5,h6{font-family:"Segoe UI",Arial,sans-serif;font-weight:400;margin:10px 0}.w3-wide{letter-spacing:4px}

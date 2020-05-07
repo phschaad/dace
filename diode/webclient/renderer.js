@@ -1004,6 +1004,8 @@ class SDFGRenderer {
         // Resize event for container
         let observer = new MutationObserver((mutations) => { this.onresize(); this.draw_async(); });
         observer.observe(this.container, { attributes: true });
+        // Also listen to resize events coming from the window
+        window.addEventListener('resize', () => { this.onresize(); this.draw_async(); });
 
         // Create the initial SDFG layout
         this.relayout();

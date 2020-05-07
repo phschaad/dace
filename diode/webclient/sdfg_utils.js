@@ -98,7 +98,11 @@ function sdfg_range_elem_to_string(range, settings=null) {
 // Includes various properties and returns their string representation
 function sdfg_property_to_string(prop, settings=null) {
     if (prop === null) return prop;
-    if (prop.type === "Indices" || prop.type === "subsets.Indices") {
+    if (typeof prop === 'boolean') {
+        if (prop)
+            return 'True';
+        return 'False';
+    } else if (prop.type === "Indices" || prop.type === "subsets.Indices") {
         let indices = prop.indices;
         let preview = '[';
         for (let index of indices) {
@@ -114,15 +118,20 @@ function sdfg_property_to_string(prop, settings=null) {
             preview += sdfg_range_elem_to_string(range, settings) + ', ';
         }
         return preview.slice(0, -2) + ']';
-    } else if (prop.language !== undefined && prop.string_data !== undefined) {
+    } else if (prop.language !== undefined) {
         // Code
-        return '<pre class="w3-code">' + prop.string_data + '</pre>';
+        if (prop.string_data !== '' && prop.string_data !== undefined)
+            return '<pre class="code"><code>' + prop.string_data.trim() +
+                '</code></pre><div class="clearfix"></div>';
+        return '';
     } else if (prop.approx !== undefined && prop.main !== undefined) {
         // SymExpr
         return prop.main;
     } else if (prop.constructor == Object) {
-        // General dictionary
-        return JSON.stringify(prop);
+        // Print the property as a general object/dictionary.
+        // Pretty print the resulting JSON with 4 space indents as a code block.
+        return '<pre class="code"><code>' + JSON.stringify(prop, undefined, 4) +
+            '</code></pre><div class="clearfix"></div>';
     } else if (prop.constructor == Array) {
         // General array
         let result = '[ ';

@@ -22,6 +22,9 @@ body {
     height: 100%;
 }
 
+.hidden {
+    display: none !important;
+}
 
 .syntax_error_highlight {
     position: absolute;

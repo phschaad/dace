@@ -16,6 +16,7 @@ function init_sdfv(sdfg) {
         if (renderer)
             setTimeout(() => outline(renderer, renderer.graph), 1);
     });
+    $('#search-bar').show();
     $('#search-btn').click(function(e){
         if (renderer)
             setTimeout(() => {find_in_graph(renderer, renderer.graph, $('#search').val(),
@@ -84,6 +85,28 @@ function load_sdfg_from_url(url) {
     request.send();
 }
 
+/**
+ * Set a title for the sidebar/infobar.
+ * @param {*} title Title to set
+ */
+function sidebar_set_title(title) {
+    document.getElementById("sidebar-header").innerText = title;
+}
+
+/**
+ * Get the current sidebar contents.
+ */
+function sidebar_get_contents() {
+    return document.getElementById('sidebar-contents')
+}
+
+/**
+ * Show the sidebar/infobar if it's hidden.
+ */
+function sidebar_show() {
+    document.getElementById("sidebar").style.display = "flex";
+}
+
 function find_recursive(graph, query, results, case_sensitive) {
     for (let nodeid of graph.nodes()) {
         let node = graph.node(nodeid);
@@ -110,7 +133,7 @@ function find_recursive(graph, query, results, case_sensitive) {
 
 function find_in_graph(renderer, sdfg, query, case_sensitive=false) {
     // Modify sidebar header
-    document.getElementById("sidebar-header").innerText = 'Search Results for "' + query + '"';
+    sidebar_set_title('Search Results for "' + query + '"');
 
     let results = [];
     if (!case_sensitive)
@@ -122,7 +145,7 @@ function find_in_graph(renderer, sdfg, query, case_sensitive=false) {
         renderer.zoom_to_view(results);
 
     // Show clickable results in sidebar
-    let sidebar = document.getElementById("sidebar-contents");
+    let sidebar = sidebar_get_contents();
     sidebar.innerHTML = '';
     for (let result of results) {
         let d = document.createElement('div');
@@ -133,14 +156,14 @@ function find_in_graph(renderer, sdfg, query, case_sensitive=false) {
     }
 
     // Open sidebar if closed
-    document.getElementById("sidebar").style.display = "flex";
+    sidebar_show();
 }
 
 function outline(renderer, sdfg) {
     // Modify sidebar header
-    document.getElementById("sidebar-header").innerText = 'SDFG Outline';
+    sidebar_set_title('SDFG Outline');
 
-    let sidebar = document.getElementById("sidebar-contents");
+    let sidebar = sidebar_get_contents();
     sidebar.innerHTML = '';
 
     // Entire SDFG
@@ -210,49 +233,52 @@ function outline(renderer, sdfg) {
     });
 
     // Open sidebar if closed
-    document.getElementById("sidebar").style.display = "flex";
+    sidebar_show();
+}
+
+function fill_info(elem) {
+    if (elem) {
+        document.getElementById('sidebar-header').innerText =
+            elem.type() + ' ' + elem.label();
+
+        // Change contents
+        let contents = document.getElementById("sidebar-contents");
+        let html = "";
+        if (elem instanceof Edge && elem.data.type === "Memlet") {
+            let sdfg_edge = elem.sdfg.nodes[elem.parent_id].edges[elem.id];
+            html += "<h4>Connectors: " + sdfg_edge.src_connector + " &rarr; " + sdfg_edge.dst_connector + "</h4>";
+        }
+        html += "<hr />";
+
+        for (let attr of Object.entries(elem.attributes())) {
+            if (attr[0] === "layout" || attr[0] === "sdfg" || attr[0].startsWith("_meta_")) continue;
+            html += "<b>" + attr[0] + "</b>:&nbsp;&nbsp;";
+            html += sdfg_property_to_string(attr[1], renderer.view_settings()) + "</p>";
+        }
+
+        // If access node, add array information too
+        if (elem instanceof AccessNode) {
+            let sdfg_array = elem.sdfg.attributes._arrays[elem.attributes().data];
+            html += "<br /><h4>Array properties:</h4>";
+            for (let attr of Object.entries(sdfg_array.attributes)) {
+                if (attr[0] === "layout" || attr[0] === "sdfg" || attr[0].startsWith("_meta_")) continue;
+                html += "<b>" + attr[0] + "</b>:&nbsp;&nbsp;";
+                html += sdfg_property_to_string(attr[1], renderer.view_settings()) + "</p>";
+            }
+        }
+
+        contents.innerHTML = html;
+        document.getElementById("sidebar").style.display = "flex";
+    } else {
+        close_menu();
+    }
 }
 
 function mouse_event(evtype, event, mousepos, elements, renderer, elem) {
     if (evtype === 'click' || evtype === 'dblclick') {
         if (renderer.menu)
             renderer.menu.destroy();
-        if (elem) {
-            // Change header
-            document.getElementById("sidebar-header").innerText = elem.type() + " " + elem.label();
-
-            // Change contents
-            let contents = document.getElementById("sidebar-contents");
-            let html = "";
-            if (elem instanceof Edge && elem.data.type === "Memlet") {
-                let sdfg_edge = elem.sdfg.nodes[elem.parent_id].edges[elem.id];
-                html += "<h4>Connectors: " + sdfg_edge.src_connector + " &rarr; " + sdfg_edge.dst_connector + "</h4>";
-            }
-            html += "<hr />";
-
-            for (let attr of Object.entries(elem.attributes())) {
-                if (attr[0] === "layout" || attr[0] === "sdfg" || attr[0].startsWith("_meta_")) continue;
-                html += "<b>" + attr[0] + "</b>:&nbsp;&nbsp;";
-                html += sdfg_property_to_string(attr[1], renderer.view_settings()) + "</p>";
-            }
-
-            // If access node, add array information too
-            if (elem instanceof AccessNode) {
-                let sdfg_array = elem.sdfg.attributes._arrays[elem.attributes().data];
-                html += "<br /><h4>Array properties:</h4>";
-                for (let attr of Object.entries(sdfg_array.attributes)) {
-                    if (attr[0] === "layout" || attr[0] === "sdfg" || attr[0].startsWith("_meta_")) continue;
-                    html += "<b>" + attr[0] + "</b>:&nbsp;&nbsp;";
-                    html += sdfg_property_to_string(attr[1], renderer.view_settings()) + "</p>";
-                }
-            }
-
-            contents.innerHTML = html;
-            document.getElementById("sidebar").style.display = "flex";
-        } else {
-            document.getElementById("sidebar-contents").innerHTML = "";
-            document.getElementById("sidebar-header").innerText = "Nothing selected";
-        }
+        fill_info(elem);
     }
 }
 
@@ -264,15 +290,15 @@ function close_menu() {
 var right = document.getElementById('sidebar');
 var bar = document.getElementById('dragbar');
 
-const drag = (e) => {
-  document.selection ? document.selection.empty() : window.getSelection().removeAllRanges();
-  right.style.width = Math.max(((e.view.innerWidth - e.pageX)), 20) + 'px';
-}
-
-bar.addEventListener('mousedown', () => {
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', () => {
-        document.removeEventListener('mousemove', drag);
+if (right && bar) {
+    const drag = (e) => {
+    document.selection ? document.selection.empty() : window.getSelection().removeAllRanges();
+    right.style.width = Math.max(((e.view.innerWidth - e.pageX)), 20) + 'px';
+    }
+    bar.addEventListener('mousedown', () => {
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', () => {
+            document.removeEventListener('mousemove', drag);
+        });
     });
-});
-
+}
