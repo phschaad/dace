@@ -1,6 +1,23 @@
 import json
 from argparse import ArgumentParser
 
+def report_error(error_message):
+    print(json.dumps({
+        'error': error_message,
+    }))
+
+def reapply_history_until_from_file(args):
+    try:
+        file_path = args[0]
+        index = int(args[1])
+        sdfg_json = None
+        with open(file_path, 'r') as sdfg_file:
+            sdfg_json = json.loads(sdfg_file.read())
+            new_sdfg = reapply_history_until(sdfg_json, index)
+            json.dump(new_sdfg, sdfg_file)
+    except BaseException as error:
+        report_error('Error: ' + str(error))
+
 def reapply_history_until(sdfg_json, index):
     """
     Rewind a given SDFG back to a specific point in its history by reapplying
@@ -55,6 +72,15 @@ def apply_transformation(sdfg_json, transformation):
         'sdfg': new_sdfg,
     }
 
+def get_transformations_from_file(file_path):
+    try:
+        sdfg_json = None
+        with open(file_path, 'r') as sdfg_file:
+            sdfg_json = json.loads(sdfg_file.read())
+            print(json.dumps(get_transformations(sdfg_json)))
+    except BaseException as error:
+        report_error('Error: ' + str(error))
+
 def get_transformations(sdfg_json):
     # We lazy import DaCe, not to break cyclic imports, but to avoid any large
     # delays when booting in daemon mode.
@@ -76,7 +102,7 @@ def get_transformations(sdfg_json):
         'docstrings': docstrings,
     }
 
-def run_daemon():
+def run_daemon(port):
     from flask import Flask, request
 
     daemon = Flask('dace.transformation.interface.vscode')
@@ -103,7 +129,7 @@ def run_daemon():
         return reapply_history_until(request_json['sdfg'],
                                      request_json['index'])
 
-    daemon.run()
+    daemon.run(port=port)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -115,22 +141,28 @@ if __name__ == '__main__':
                         help='Run as a daemon')
                         '''
 
-    '''
     parser.add_argument('-p',
                         '--port',
                         action='store',
-                        type='int',
+                        type=int,
                         help='The port to listen on')
-                        '''
+
+    parser.add_argument('-r',
+                        '--replay-history-until',
+                        nargs=2,
+                        action='store',
+                        help='Replay the SDFG history up to a specific index')
 
     parser.add_argument('-t',
                         '--transformations',
-                        action='store_true',
+                        action='store',
                         help='Get applicable transformations for an SDFG')
 
     args = parser.parse_args()
 
     if (args.transformations):
-        get_transformations(None)
-    else:
-        run_daemon()
+        get_transformations_from_file(args.transformations)
+    elif (args.reapply_history_until):
+        reapply_history_until_from_file(args.reapply_history_until)
+    elif (args.port):
+        run_daemon(args.port)
