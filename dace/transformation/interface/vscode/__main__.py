@@ -1,11 +1,6 @@
 import json
 from argparse import ArgumentParser
 
-def report_error(error_message):
-    print(json.dumps({
-        'error': error_message,
-    }))
-
 def reapply_history_until_from_file(args):
     try:
         file_path = args[0]
@@ -15,8 +10,49 @@ def reapply_history_until_from_file(args):
             sdfg_json = json.loads(sdfg_file.read())
             new_sdfg = reapply_history_until(sdfg_json, index)
             json.dump(new_sdfg, sdfg_file)
-    except BaseException as error:
-        report_error('Error: ' + str(error))
+    except Exception as e:
+        print(json.dumps({
+            'error': {
+                'message': 'Failed to replay history on SDFG',
+                'details': get_exception_message(e),
+            },
+        }))
+
+def get_exception_message(exception):
+    return '%s: %s' % (type(exception).__name__, exception)
+
+def load_sdfg_from_json(json):
+    # We lazy import SDFGs, not to break cyclic imports, but to avoid any large
+    # delays when booting in daemon mode.
+    from dace.sdfg import SDFG
+
+    if 'error' in json:
+        message = ''
+        if ('message' in json['error']):
+            message = json['error']['message']
+        error = {
+            'error': {
+                'message': 'Invalid SDFG provided',
+                'details': message,
+            }
+        }
+        sdfg = None
+    else:
+        try:
+            sdfg = SDFG.from_json(json)
+            error = None
+        except Exception as e:
+            error = {
+                'error': {
+                    'message': 'Failed to parse the provided SDFG',
+                    'details': get_exception_message(e),
+                },
+            }
+            sdfg = None
+    return {
+        'error': error,
+        'sdfg': sdfg,
+    }
 
 def reapply_history_until(sdfg_json, index):
     """
@@ -26,11 +62,10 @@ def reapply_history_until(sdfg_json, index):
     :param sdfg_json:  The SDFG to rewind.
     :param index:      Index of the last history item to apply.
     """
-    # We lazy import DaCe, not to break cyclic imports, but to avoid any large
-    # delays when booting in daemon mode.
-    from dace.sdfg import SDFG
-
-    sdfg = SDFG.from_json(sdfg_json)
+    loaded = load_sdfg_from_json(sdfg_json)
+    if loaded['error'] is not None:
+        return loaded['error']
+    sdfg = loaded['sdfg']
 
     original_sdfg = sdfg.orig_sdfg
     history = sdfg.transformation_hist
@@ -42,8 +77,16 @@ def reapply_history_until(sdfg_json, index):
         # append_transformation is called before apply_pattern, because the
         # original SDFG may be saved incorrectly otherwise. This is not ideal
         # and needs to be fixed.
-        original_sdfg.append_transformation(transformation)
-        transformation.apply_pattern(original_sdfg)
+        try:
+            original_sdfg.append_transformation(transformation)
+            transformation.apply_pattern(original_sdfg)
+        except Exception as e:
+            return {
+                'error': {
+                    'message': 'Failed to play back the transformation history',
+                    'details': get_exception_message(e),
+                },
+            }
 
     new_sdfg = original_sdfg.to_json()
     return {
@@ -54,18 +97,36 @@ def apply_transformation(sdfg_json, transformation):
     # We lazy import DaCe, not to break cyclic imports, but to avoid any large
     # delays when booting in daemon mode.
     from dace.transformation.pattern_matching import Transformation
-    from dace.sdfg import SDFG
 
-    sdfg = SDFG.from_json(sdfg_json)
+    loaded = load_sdfg_from_json(sdfg_json)
+    if loaded['error'] is not None:
+        return loaded['error']
+    sdfg = loaded['sdfg']
 
-    revived_transformation = Transformation.from_json(transformation)
+    try:
+        revived_transformation = Transformation.from_json(transformation)
+    except Exception as e:
+        return {
+            'error': {
+                'message': 'Failed to parse the applied transformation',
+                'details': get_exception_message(e),
+            },
+        }
     # FIXME: The appending should happen with the call to apply the pattern. The
     # way it currently stands, the callee must make sure that
     # append_transformation is called before apply_pattern, because the original
     # SDFG may be saved incorrectly otherwise. This is not ideal and needs to be
     # fixed.
-    sdfg.append_transformation(revived_transformation)
-    revived_transformation.apply_pattern(sdfg)
+    try:
+        sdfg.append_transformation(revived_transformation)
+        revived_transformation.apply_pattern(sdfg)
+    except Exception as e:
+        return {
+            'error': {
+                'message': 'Failed to apply the transformation to the SDFG',
+                'details': get_exception_message(e),
+            },
+        }
 
     new_sdfg = sdfg.to_json()
     return {
@@ -78,16 +139,24 @@ def get_transformations_from_file(file_path):
         with open(file_path, 'r') as sdfg_file:
             sdfg_json = json.loads(sdfg_file.read())
             print(json.dumps(get_transformations(sdfg_json)))
-    except BaseException as error:
-        report_error('Error: ' + str(error))
+    except Exception as e:
+        print(json.dumps({
+            'error': {
+                'message': 'Failed to load transformations for SDFG',
+                'details': get_exception_message(e),
+            },
+        }))
 
 def get_transformations(sdfg_json):
     # We lazy import DaCe, not to break cyclic imports, but to avoid any large
     # delays when booting in daemon mode.
     from dace.transformation.optimizer import SDFGOptimizer
-    from dace.sdfg import SDFG
 
-    sdfg = SDFG.from_json(sdfg_json)
+    loaded = load_sdfg_from_json(sdfg_json)
+    if loaded['error'] is not None:
+        return loaded['error']
+    sdfg = loaded['sdfg']
+
     optimizer = SDFGOptimizer(sdfg)
     matches = optimizer.get_pattern_matches()
 
@@ -103,7 +172,27 @@ def get_transformations(sdfg_json):
     }
 
 def run_daemon(port):
+    from logging.config import dictConfig
     from flask import Flask, request
+
+    # Move Flask's logging over to stdout, because stderr is used for error
+    # reporting. This was taken from
+    # https://stackoverflow.com/questions/56905756
+    dictConfig({
+        'version': 1,
+        'formatters': {'default': {
+            'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+        }},
+        'handlers': {'wsgi': {
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stdout',
+            'formatter': 'default',
+        }},
+        'root': {
+            'level': 'INFO',
+            'handlers': ['wsgi'],
+        }
+    })
 
     daemon = Flask('dace.transformation.interface.vscode')
     daemon.config['DEBUG'] = False
