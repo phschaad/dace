@@ -9,7 +9,9 @@ def reapply_history_until_from_file(args):
         with open(file_path, 'r') as sdfg_file:
             sdfg_json = json.loads(sdfg_file.read())
             new_sdfg = reapply_history_until(sdfg_json, index)
-            json.dump(new_sdfg, sdfg_file)
+            print(json.dumps({
+                'sdfg': new_sdfg,
+            }))
     except Exception as e:
         print(json.dumps({
             'error': {
@@ -251,7 +253,7 @@ if __name__ == '__main__':
 
     if (args.transformations):
         get_transformations_from_file(args.transformations)
-    elif (args.reapply_history_until):
-        reapply_history_until_from_file(args.reapply_history_until)
+    elif (args.replay_history_until):
+        reapply_history_until_from_file(args.replay_history_until)
     elif (args.port):
         run_daemon(args.port)
